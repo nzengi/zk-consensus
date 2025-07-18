@@ -1,0 +1,54 @@
+[package]
+name = "zk_consensus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# ZK-Proof libraries (2025 güncel versiyonlar)
+ark-groth16 = "0.5.0"
+ark-bls12-381 = "0.5.0"
+ark-ff = "0.5.0"
+ark-ec = "0.5.0"
+ark-crypto-primitives = "0.5.0"
+ark-std = "0.5.0"
+ark-poly = "0.5.0"
+ark-relations = "0.5.0"
+ark-serialize = "0.5.0"
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# CLI interface
+clap = { version = "4.0", features = ["derive"] }
+
+# Cryptography
+sha2 = "0.10"
+rand = "0.8"
+hex = "0.4"
+
+# Network and storage
+rocksdb = "0.21"
+libp2p = { version = "0.53", features = ["floodsub", "mdns", "tcp", "noise", "yamux"] }
+bincode = "1.3"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Configuration
+config = "0.13"
+
+[dev-dependencies]
+criterion = "0.5"
+proptest = "1.3"
