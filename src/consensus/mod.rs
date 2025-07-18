@@ -28,17 +28,29 @@ impl ConsensusEngine {
         zk_generator: ZKProofGenerator,
         storage: StorageManager,
     ) -> Result<Self> {
-        info!("Initializing ZK-PoV Consensus Engine");
+        info!("🔧 Initializing ZK-PoV Consensus Engine");
         
         let node_id = Self::generate_node_id();
         let (message_tx, message_rx) = mpsc::channel(1000);
         
+        // Initialize as validator with some stake
+        let mut validators = HashMap::new();
+        validators.insert(node_id, ValidatorInfo {
+            stake: 1000,
+            is_active: true,
+            last_block_time: Utc::now(),
+            performance_score: 1.0,
+        });
+        
         let state = ConsensusState {
             current_block: 0,
-            validators: HashMap::new(),
-            total_stake: 0,
+            validators,
+            total_stake: 1000,
             epoch: 0,
         };
+        
+        info!("👤 Node ID: {}", hex::encode(node_id));
+        info!("🏛️ Initialized as validator with 1000 stake");
         
         Ok(Self {
             zk_generator: Arc::new(zk_generator),
@@ -48,7 +60,7 @@ impl ConsensusEngine {
             message_tx,
             message_rx,
             block_time: Duration::seconds(12), // 12 second block time
-            min_validators: 3,
+            min_validators: 1, // Allow single validator for testing
         })
     }
     
@@ -60,7 +72,7 @@ impl ConsensusEngine {
     }
     
     pub async fn start(&mut self) -> Result<()> {
-        info!("Starting ZK-PoV Consensus Engine");
+        info!("🚀 Starting ZK-PoV Consensus Engine");
         
         // Start consensus loop
         self.consensus_loop().await?;
@@ -69,14 +81,22 @@ impl ConsensusEngine {
     }
     
     async fn consensus_loop(&mut self) -> Result<()> {
+        info!("🔄 Starting consensus loop");
+        let mut tick_counter = 0u64;
+        
         loop {
             tokio::select! {
                 message = self.message_rx.recv() => {
                     if let Some(msg) = message {
+                        debug!("📨 Received message: {:?}", msg);
                         self.handle_message(msg).await?;
                     }
                 }
                 _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
+                    tick_counter += 1;
+                    if tick_counter % 10 == 0 {
+                        info!("⏱️ Consensus tick #{}", tick_counter);
+                    }
                     self.tick().await?;
                 }
             }
@@ -215,6 +235,7 @@ impl ConsensusEngine {
         
         // Check if we're a validator
         if !state.validators.contains_key(&self.node_id) {
+            debug!("❌ Not a validator, cannot propose block");
             return Ok(false);
         }
         
@@ -222,27 +243,34 @@ impl ConsensusEngine {
         if let Some(last_block) = self.storage.get_latest_block().await? {
             let time_since_last = Utc::now() - last_block.header.timestamp;
             if time_since_last < self.block_time {
+                debug!("⏳ Too early to propose block, {} seconds left", 
+                    (self.block_time - time_since_last).num_seconds());
                 return Ok(false);
             }
+            debug!("✅ Time to propose new block (last block was {} seconds ago)", 
+                time_since_last.num_seconds());
+        } else {
+            info!("🌟 No previous block found, proposing genesis block");
         }
         
         Ok(true)
     }
     
     async fn propose_new_block(&mut self) -> Result<()> {
-        info!("Proposing new block");
-        
         let state = self.state.read().await;
         let block_number = state.current_block + 1;
         
+        info!("📦 Proposing new block #{}", block_number);
+        
         // Get pending transactions
         let transactions = self.storage.get_pending_transactions().await?;
+        info!("📋 Found {} pending transactions", transactions.len());
         
         // Create block header
         let parent_hash = if let Some(last_block) = self.storage.get_latest_block().await? {
             last_block.hash()
         } else {
-            [0; 32]
+            [0; 32] // Genesis block
         };
         
         let merkle_root = self.calculate_merkle_root(&transactions);
@@ -269,16 +297,22 @@ impl ConsensusEngine {
             },
         };
         
+        info!("🔐 Generating ZK proof for block #{}", block_number);
         // Generate ZK proof
         block.zk_proof = self.zk_generator.generate_proof(&block).await?;
+        info!("✅ ZK proof generated ({} bytes)", block.zk_proof.proof_data.len());
         
         // Store block
         self.storage.store_block(&block).await?;
         
-        // Broadcast block
-        self.broadcast_block(block).await?;
+        // Broadcast block (mock for now)
+        self.broadcast_block(block.clone()).await?;
         
-        info!("Proposed block {}", block_number);
+        // Update consensus state
+        let mut state = self.state.write().await;
+        state.current_block = block_number;
+        
+        info!("🎉 Successfully proposed and stored block #{}", block_number);
         Ok(())
     }
     
